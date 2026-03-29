@@ -356,6 +356,11 @@ app.post('/api/forms/:slug/submit', async (req, res) => {
   }
 });
 
+
+app.get('/', (_, res) => {
+  res.redirect('/admin');
+});
+
 app.get('/admin', (_, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
