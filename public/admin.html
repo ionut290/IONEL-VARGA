@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Moduli</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Crea un nuovo modulo</h1>
+    <p>Carica il template PDF: l'app prova a riconoscere i campi automaticamente.</p>
+
+    <form id="createForm" class="card">
+      <label>Titolo modulo</label>
+      <input name="title" required placeholder="Es: Richiesta preventivo" />
+
+      <label>Email destinataria</label>
+      <input name="receiverEmail" type="email" required placeholder="moduli@azienda.it" />
+
+      <label>Template (PDF o immagine, opzionale)</label>
+      <input name="template" type="file" accept=".pdf,.png,.jpg,.jpeg" />
+
+      <button type="submit">Crea modulo</button>
+    </form>
+
+    <h2>Moduli creati</h2>
+    <div id="list" class="list"></div>
+  </main>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
