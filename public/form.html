@@ -10,10 +10,15 @@
   <main class="container">
     <h1 id="title">Modulo</h1>
     <div id="templateLink"></div>
-    <form id="dynamicForm" class="card"></form>
+    <form id="dynamicForm" class="card">
+      <div id="pdfPages" class="pdf-pages"></div>
+      <div id="fallbackFields" class="field-list"></div>
+      <button type="submit">Invia modulo</button>
+    </form>
     <p id="status"></p>
   </main>
 
-  <script src="/form.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
+  <script src="/form.js" type="module"></script>
 </body>
 </html>

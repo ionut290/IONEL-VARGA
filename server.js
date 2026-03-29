@@ -4,19 +4,22 @@ const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const nodemailer = require('nodemailer');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'data', 'forms.json');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const SUBMISSIONS_DIR = path.join(UPLOADS_DIR, 'submissions');
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, path.join(__dirname, 'uploads')),
+  destination: (_, __, cb) => cb(null, UPLOADS_DIR),
   filename: (_, file, cb) => {
     const safeName = `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`;
     cb(null, safeName);
@@ -34,7 +37,16 @@ const DEFAULT_FIELDS = [
   { key: 'firma', label: 'Firma', type: 'text', required: false },
 ];
 
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
 function ensureDataFile() {
+  ensureDir(path.dirname(DATA_FILE));
+  ensureDir(UPLOADS_DIR);
+  ensureDir(SUBMISSIONS_DIR);
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify({ forms: [] }, null, 2));
   }
@@ -55,6 +67,23 @@ function slugify(value) {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)+/g, '');
+}
+
+function normalizeField(field = {}, idx = 0) {
+  const normalized = {
+    key: String(field.key || `field_${idx + 1}`).trim(),
+    label: String(field.label || field.key || `Campo ${idx + 1}`).trim(),
+    type: field.type || 'text',
+    required: Boolean(field.required),
+  };
+
+  if (Number.isFinite(field.page)) normalized.page = field.page;
+  if (Number.isFinite(field.x)) normalized.x = field.x;
+  if (Number.isFinite(field.y)) normalized.y = field.y;
+  if (Number.isFinite(field.width)) normalized.width = field.width;
+  if (Number.isFinite(field.height)) normalized.height = field.height;
+
+  return normalized;
 }
 
 function detectFieldsFromText(text = '') {
@@ -100,12 +129,78 @@ async function parsePdfText(filePath) {
   return parsed.text || '';
 }
 
-async function sendSubmissionEmail({ receiverEmail, formTitle, values }) {
+async function generateFilledPdf(form, values) {
+  if (!form.templatePath || !form.templatePath.toLowerCase().endsWith('.pdf')) return null;
+
+  const sourcePath = path.join(__dirname, form.templatePath.replace(/^\//, ''));
+  if (!fs.existsSync(sourcePath)) return null;
+
+  const pdfBytes = fs.readFileSync(sourcePath);
+  const doc = await PDFDocument.load(pdfBytes);
+  const pages = doc.getPages();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+
+  const drawableFields = (form.fields || []).filter(
+    (f) => Number.isFinite(f.page) && Number.isFinite(f.x) && Number.isFinite(f.y),
+  );
+
+  drawableFields.forEach((f) => {
+    const page = pages[f.page - 1];
+    if (!page) return;
+    const { width, height } = page.getSize();
+
+    const boxW = Math.max((f.width || 0.2) * width, 12);
+    const boxH = Math.max((f.height || 0.03) * height, 12);
+    const x = f.x * width;
+    const y = height - (f.y * height) - boxH;
+    const rawVal = values[f.key];
+    const val = rawVal == null ? '' : String(rawVal);
+
+    if (f.type === 'checkbox') {
+      page.drawRectangle({
+        x,
+        y,
+        width: boxH,
+        height: boxH,
+        borderWidth: 1,
+        borderColor: rgb(0.2, 0.2, 0.2),
+      });
+      if (val === 'true' || val === '1' || val.toLowerCase() === 'on') {
+        page.drawText('X', { x: x + 3, y: y + 1, size: Math.max(boxH - 3, 8), font });
+      }
+    } else {
+      page.drawText(val, {
+        x: x + 2,
+        y: y + Math.max(boxH / 3, 8),
+        size: Math.min(Math.max(boxH - 4, 9), 14),
+        font,
+        color: rgb(0, 0, 0),
+        maxWidth: Math.max(boxW - 4, 20),
+      });
+    }
+  });
+
+  const outName = `${form.slug}-${Date.now()}.pdf`;
+  const outPath = path.join(SUBMISSIONS_DIR, outName);
+  const outBytes = await doc.save();
+  fs.writeFileSync(outPath, outBytes);
+
+  return {
+    path: outPath,
+    publicPath: `/uploads/submissions/${outName}`,
+    filename: outName,
+  };
+}
+
+async function sendSubmissionEmail({ receiverEmail, formTitle, values, attachment }) {
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.log('[EMAIL DISABILITATA] Configura SMTP_* nel file .env');
     console.log('Destinatario:', receiverEmail);
     console.log('Modulo:', formTitle);
     console.log('Valori:', values);
+    if (attachment?.path) {
+      console.log('PDF compilato salvato in:', attachment.path);
+    }
     return { skipped: true };
   }
 
@@ -133,6 +228,14 @@ async function sendSubmissionEmail({ receiverEmail, formTitle, values }) {
     to: receiverEmail,
     subject: `Nuovo invio - ${formTitle}`,
     html: htmlBody,
+    attachments: attachment?.path
+      ? [
+          {
+            filename: attachment.filename || 'modulo-compilato.pdf',
+            path: attachment.path,
+          },
+        ]
+      : [],
   });
 
   return { skipped: false };
@@ -165,7 +268,7 @@ app.post('/api/forms', upload.single('template'), async (req, res) => {
     if (req.body.fieldsJson) {
       const parsedFields = JSON.parse(req.body.fieldsJson);
       if (Array.isArray(parsedFields) && parsedFields.length > 0) {
-        detectedFields = parsedFields;
+        detectedFields = parsedFields.map(normalizeField);
       }
     }
 
@@ -185,7 +288,7 @@ app.post('/api/forms', upload.single('template'), async (req, res) => {
       slug,
       receiverEmail,
       templatePath,
-      fields: detectedFields,
+      fields: detectedFields.map(normalizeField),
       submissions: [],
       createdAt: new Date().toISOString(),
     };
@@ -218,15 +321,21 @@ app.post('/api/forms/:slug/submit', async (req, res) => {
     if (!form) return res.status(404).json({ error: 'Modulo non trovato.' });
 
     const requiredFields = form.fields.filter((f) => f.required);
-    const missing = requiredFields.filter((f) => values[f.key] === undefined || values[f.key] === '');
+    const missing = requiredFields.filter((f) => {
+      if (f.type === 'checkbox') return values[f.key] !== 'true' && values[f.key] !== true;
+      return values[f.key] === undefined || values[f.key] === '';
+    });
 
     if (missing.length > 0) {
       return res.status(400).json({ error: `Campi obbligatori mancanti: ${missing.map((m) => m.label).join(', ')}` });
     }
 
+    const generatedPdf = await generateFilledPdf(form, values);
+
     const submission = {
       id: `${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       values,
+      filledPdfPath: generatedPdf?.publicPath || null,
       submittedAt: new Date().toISOString(),
     };
 
@@ -237,9 +346,10 @@ app.post('/api/forms/:slug/submit', async (req, res) => {
       receiverEmail: form.receiverEmail,
       formTitle: form.title,
       values,
+      attachment: generatedPdf,
     });
 
-    res.status(201).json({ ok: true, submissionId: submission.id });
+    res.status(201).json({ ok: true, submissionId: submission.id, filledPdfPath: submission.filledPdfPath });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Errore invio modulo.' });
