@@ -31,3 +31,15 @@ Apri:
 - `POST /api/forms` crea modulo (`multipart/form-data` con `title`, `receiverEmail`, `template`)
 - `GET /api/forms/:slug` dettaglio modulo
 - `POST /api/forms/:slug/submit` invio compilazione
+
+## Risoluzione problemi
+
+Se l'app "non si apre" o vedi errori tipo `Cannot find module 'express'`:
+
+```bash
+npm install
+npm run dev
+```
+
+Poi apri direttamente `http://localhost:3000/admin` (la root `/` ora reindirizza automaticamente all'area admin).
+
