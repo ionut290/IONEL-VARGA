@@ -9,7 +9,7 @@
 <body>
   <main class="container">
     <h1>Crea un nuovo modulo</h1>
-    <p>Carica il template PDF: l'app prova a riconoscere i campi automaticamente.</p>
+    <p>Carica un PDF e posiziona i campi cliccando sulla pagina.</p>
 
     <form id="createForm" class="card">
       <label>Titolo modulo</label>
@@ -18,9 +18,32 @@
       <label>Email destinataria</label>
       <input name="receiverEmail" type="email" required placeholder="moduli@azienda.it" />
 
-      <label>Template (PDF o immagine, opzionale)</label>
-      <input name="template" type="file" accept=".pdf,.png,.jpg,.jpeg" />
+      <label>Template (PDF consigliato)</label>
+      <input id="templateInput" name="template" type="file" accept=".pdf,.png,.jpg,.jpeg" />
 
+      <div class="field-editor">
+        <h3>Nuovo campo</h3>
+        <input id="fieldLabel" placeholder="Label (es. Nome)" />
+        <input id="fieldKey" placeholder="Chiave (es. nome)" />
+        <select id="fieldType">
+          <option value="text">Text</option>
+          <option value="email">Email</option>
+          <option value="date">Date</option>
+          <option value="checkbox">Checkbox</option>
+        </select>
+        <label class="inline"><input id="fieldRequired" type="checkbox" checked /> Obbligatorio</label>
+        <button id="armFieldBtn" type="button">1) Seleziona campo da piazzare</button>
+      </div>
+
+      <p class="small">2) Clicca sul PDF per posizionarlo.</p>
+      <div id="adminPdfPages" class="pdf-pages"></div>
+
+      <div>
+        <h3>Campi posizionati</h3>
+        <div id="fieldsList" class="list"></div>
+      </div>
+
+      <input type="hidden" name="fieldsJson" id="fieldsJson" />
       <button type="submit">Crea modulo</button>
     </form>
 
@@ -28,6 +51,6 @@
     <div id="list" class="list"></div>
   </main>
 
-  <script src="/admin.js"></script>
+  <script src="/admin.js" type="module"></script>
 </body>
 </html>
