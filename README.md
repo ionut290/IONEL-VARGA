@@ -43,3 +43,12 @@ npm run dev
 
 Poi apri direttamente `http://localhost:3000/admin` (la root `/` ora reindirizza automaticamente all'area admin).
 
+## Deploy su Netlify
+
+Questo progetto usa pagine statiche in `public/`. Ho aggiunto `netlify.toml` per:
+- pubblicare la cartella `public`
+- fare redirect da `/` a `/admin.html`
+- supportare gli URL puliti `/admin` e `/f/<slug>`
+
+> Nota: le API `/api/*` richiedono comunque il server Node (`server.js`) in esecuzione.
+
